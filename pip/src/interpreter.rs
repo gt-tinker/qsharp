@@ -24,9 +24,9 @@ use qsc::{
     },
     project::{FileSystem, Manifest, ManifestDescriptor},
     target::Profile,
-    LanguageFeatures, PackageType, SourceMap,
+    Backend, LanguageFeatures, PackageType, SourceMap,
 };
-use resource_estimator::{self as re, estimate_expr};
+use resource_estimator::{self as re, estimate_expr, estimate_resources};
 use std::fmt::Write;
 
 #[pymodule]
@@ -38,6 +38,7 @@ fn _native(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Output>()?;
     m.add_class::<StateDumpData>()?;
     m.add_class::<Circuit>()?;
+    m.add_class::<ResourceEstimator>()?;
     m.add_function(wrap_pyfunction!(physical_estimates, m)?)?;
     m.add("QSharpError", py.get_type::<QSharpError>())?;
 
@@ -263,30 +264,34 @@ impl Interpreter {
     }
 
     fn estimate(&mut self, _py: Python, entry_expr: &str, job_params: &str) -> PyResult<String> {
-        match estimate_expr(&mut self.interpreter, entry_expr, job_params) {
-            Ok(estimate) => Ok(estimate),
-            Err(errors) if matches!(errors[0], re::Error::Interpreter(_)) => {
-                Err(QSharpError::new_err(format_errors(
-                    errors
-                        .into_iter()
-                        .map(|e| match e {
-                            re::Error::Interpreter(e) => e,
-                            re::Error::Estimation(_) => unreachable!(),
-                        })
-                        .collect::<Vec<_>>(),
-                )))
-            }
-            Err(errors) => Err(QSharpError::new_err(
+        convert_estimation_error(estimate_expr(&mut self.interpreter, entry_expr, job_params))
+    }
+}
+
+fn convert_estimation_error(res: std::result::Result<String, Vec<re::Error>>) -> PyResult<String> {
+    match res {
+        Ok(estimate) => Ok(estimate),
+        Err(errors) if matches!(errors[0], re::Error::Interpreter(_)) => {
+            Err(QSharpError::new_err(format_errors(
                 errors
                     .into_iter()
                     .map(|e| match e {
-                        re::Error::Estimation(e) => e.to_string(),
-                        re::Error::Interpreter(_) => unreachable!(),
+                        re::Error::Interpreter(e) => e,
+                        re::Error::Estimation(_) => unreachable!(),
                     })
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            )),
+                    .collect::<Vec<_>>(),
+            )))
         }
+        Err(errors) => Err(QSharpError::new_err(
+            errors
+                .into_iter()
+                .map(|e| match e {
+                    re::Error::Estimation(e) => e.to_string(),
+                    re::Error::Interpreter(_) => unreachable!(),
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )),
     }
 }
 
@@ -578,6 +583,103 @@ impl Circuit {
 
     fn json(&self, _py: Python) -> PyResult<String> {
         serde_json::to_string(&self.0).map_err(|e| PyException::new_err(e.to_string()))
+    }
+}
+
+#[pyclass(unsendable)]
+struct ResourceEstimator {
+    job_params: String,
+    lc: re::counts::LogicalCounter,
+}
+
+#[pymethods]
+impl ResourceEstimator {
+    #[new]
+    fn new(job_params: &str) -> Self {
+        ResourceEstimator {
+            job_params: job_params.to_owned(),
+            lc: re::counts::LogicalCounter::default(),
+        }
+    }
+
+    fn ccx(&mut self, ctl0: usize, ctl1: usize, q: usize) {
+        self.lc.ccx(ctl0, ctl1, q);
+    }
+    fn cx(&mut self, ctl: usize, q: usize) {
+        self.lc.cx(ctl, q);
+    }
+    fn cy(&mut self, ctl: usize, q: usize) {
+        self.lc.cy(ctl, q);
+    }
+    fn cz(&mut self, ctl: usize, q: usize) {
+        self.lc.cz(ctl, q);
+    }
+    fn h(&mut self, q: usize) {
+        self.lc.h(q);
+    }
+    fn m(&mut self, q: usize) -> bool {
+        self.lc.m(q)
+    }
+    fn mresetz(&mut self, q: usize) -> bool {
+        self.lc.mresetz(q)
+    }
+    fn reset(&mut self, q: usize) {
+        self.lc.reset(q);
+    }
+    fn rx(&mut self, theta: f64, q: usize) {
+        self.lc.rz(theta, q);
+    }
+    fn rxx(&mut self, theta: f64, q0: usize, q1: usize) {
+        self.lc.rxx(theta, q0, q1);
+    }
+    fn ry(&mut self, theta: f64, q: usize) {
+        self.lc.ry(theta, q);
+    }
+    fn ryy(&mut self, theta: f64, q0: usize, q1: usize) {
+        self.lc.ryy(theta, q0, q1);
+    }
+    fn rz(&mut self, theta: f64, q: usize) {
+        self.lc.rz(theta, q);
+    }
+    fn rzz(&mut self, theta: f64, q0: usize, q1: usize) {
+        self.lc.rzz(theta, q0, q1);
+    }
+    fn sadj(&mut self, q: usize) {
+        self.lc.sadj(q);
+    }
+    fn s(&mut self, q: usize) {
+        self.lc.s(q);
+    }
+    fn swap(&mut self, q0: usize, q1: usize) {
+        self.lc.swap(q0, q1);
+    }
+    fn tadj(&mut self, q: usize) {
+        self.lc.tadj(q);
+    }
+    fn t(&mut self, q: usize) {
+        self.lc.t(q);
+    }
+    fn x(&mut self, q: usize) {
+        self.lc.x(q);
+    }
+    fn y(&mut self, q: usize) {
+        self.lc.y(q);
+    }
+    fn z(&mut self, q: usize) {
+        self.lc.z(q);
+    }
+    fn qubit_allocate(&mut self) -> usize {
+        self.lc.qubit_allocate()
+    }
+    fn qubit_release(&mut self, q: usize) {
+        self.lc.qubit_release(q)
+    }
+
+    fn estimate(&mut self) -> PyResult<String> {
+        convert_estimation_error(estimate_resources(
+            self.lc.logical_resources(),
+            &self.job_params,
+        ))
     }
 }
 

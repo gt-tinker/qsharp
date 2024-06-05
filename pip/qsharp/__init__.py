@@ -16,7 +16,7 @@ from ._qsharp import (
     ShotResult,
 )
 
-from ._native import Result, Pauli, QSharpError, TargetProfile
+from ._native import Result, Pauli, QSharpError, TargetProfile, ResourceEstimator
 
 # IPython notebook specific features
 try:
@@ -44,6 +44,7 @@ __all__ = [
     "Pauli",
     "QSharpError",
     "TargetProfile",
+    "ResourceEstimator",
     "StateDump",
     "ShotResult",
 ]

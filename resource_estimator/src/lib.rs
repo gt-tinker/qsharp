@@ -26,7 +26,7 @@ pub use system::estimate_physical_resources_from_json;
 use counts::LogicalCounter;
 use miette::Diagnostic;
 use qsc::interpret::{self, GenericReceiver, Interpreter};
-use system::estimate_physical_resources;
+use system::{estimate_physical_resources, LogicalResourceCounts};
 use thiserror::Error;
 
 #[derive(Debug, Diagnostic, Error)]
@@ -60,6 +60,12 @@ pub fn estimate_expr(
         .run_with_sim(&mut counter, &mut out, expr)
         .map_err(|e| e.into_iter().map(Error::Interpreter).collect::<Vec<_>>())?
         .map_err(|e| vec![Error::Interpreter(e[0].clone())])?;
-    estimate_physical_resources(counter.logical_resources(), params)
-        .map_err(|e| vec![Error::Estimation(e)])
+    estimate_resources(counter.logical_resources(), params)
+}
+
+pub fn estimate_resources(
+    counts: LogicalResourceCounts,
+    params: &str,
+) -> Result<String, Vec<Error>> {
+    estimate_physical_resources(counts, params).map_err(|e| vec![Error::Estimation(e)])
 }
