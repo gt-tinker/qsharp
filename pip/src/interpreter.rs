@@ -584,6 +584,10 @@ impl Circuit {
     fn json(&self, _py: Python) -> PyResult<String> {
         serde_json::to_string(&self.0).map_err(|e| PyException::new_err(e.to_string()))
     }
+
+    fn qasm(&self) -> PyResult<String> {
+        self.0.qasm().map_err(PyException::new_err)
+    }
 }
 
 #[pyclass(unsendable)]
@@ -672,7 +676,7 @@ impl ResourceEstimator {
         self.lc.qubit_allocate()
     }
     fn qubit_release(&mut self, q: usize) {
-        self.lc.qubit_release(q)
+        self.lc.qubit_release(q);
     }
 
     fn estimate(&mut self) -> PyResult<String> {

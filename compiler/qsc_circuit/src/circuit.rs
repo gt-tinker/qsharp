@@ -16,6 +16,79 @@ pub struct Circuit {
     pub qubits: Vec<Qubit>,
 }
 
+impl Circuit {
+    pub fn qasm(&self) -> Result<String, String> {
+        let mut ret = "".to_string();
+        ret += "OPENQASM 3.0;\n";
+        ret += "include \"stdgates.inc\";\n";
+        // The only gates in this circuit that are not in stdgates.inc. The Q#
+        // documentation is painfully inconsistent on how these are defined, so
+        // I am following Stefan's implementation in sparsesim
+        ret += "gate rxx(theta) q0, q1 { cx q0, q1; rx(theta) q0; cx q0, q1; }\n";
+        ret += "gate ryy(theta) q0, q1 { cx q0, q1; ry(theta) q0; cx q0, q1; }\n";
+        ret += "gate rzz(theta) q0, q1 { cx q0, q1; rz(theta) q0; cx q0, q1; }\n";
+
+        let n_qubits = self.qubits.len();
+        ret += &format!("qreg q[{}];\n", n_qubits);
+        ret += &format!("creg c[{}];\n", n_qubits);
+
+        for op in &self.operations {
+            if !op.children.is_empty() {
+                return Err("Cannot handle nested gates".to_string());
+            }
+
+            if op.is_measurement {
+                if op.targets.len() != 1 {
+                    return Err("Wrong number of targets for measurement".to_string());
+                }
+                let targ = &op.targets[0];
+                let c_id = targ.c_id.ok_or("Missing classical bit")?;
+                ret += &format!("measure q[{}] -> c[{}];\n", targ.q_id, c_id);
+            } else {
+                if op.is_controlled {
+                    ret += &format!("ctrl({}) @ ", op.controls.len());
+                }
+                if op.is_adjoint {
+                    ret += "inv @ ";
+                }
+
+                let controls = if op.is_controlled {
+                    // TODO: check that this is a quantum register
+                    op.controls
+                        .iter()
+                        .map(|tgt| format!("q[{}], ", tgt.q_id))
+                        .collect::<Vec<_>>()
+                        .join("")
+                } else {
+                    "".to_string()
+                };
+
+                let params = match &op.display_args {
+                    Some(p) => format!("({p})"),
+                    None => "".to_string(),
+                };
+
+                // TODO: check that this is a quantum register
+                let targets = op
+                    .targets
+                    .iter()
+                    .map(|tgt| format!("q[{}]", tgt.q_id))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                // TODO: make this a constant somehow
+                let name = if &op.gate == "|0〉" {
+                    "reset".to_string()
+                } else {
+                    op.gate.to_lowercase()
+                };
+                ret += &format!("{}{} {}{};\n", name, params, controls, targets);
+            }
+        }
+
+        Ok(ret)
+    }
+}
+
 #[derive(Clone, Serialize, Debug, PartialEq)]
 pub struct Operation {
     #[allow(clippy::struct_field_names)]
