@@ -22,14 +22,16 @@ namespace Microsoft.Quantum.Intrinsic {
     ///
     /// # Remarks
     /// Use the Adjoint only for uncomputation purposes.
+    @Config(Adaptive)
     operation AND(control1 : Qubit, control2 : Qubit, target : Qubit) : Unit is Adj {
         body ... {
             __quantum__qis__ccx__body(control1, control2, target);
         }
         adjoint ... {
             __quantum__qis__h__body(target);
-            CCZ(target, control1, control2);
-            Reset(target);
+            if MResetZ(target) == One {
+                __quantum__qis__cz__body(control1, control2);
+            }
         }
     }
 
