@@ -78,6 +78,9 @@ impl Circuit {
                 // TODO: make this a constant somehow
                 let name = if &op.gate == "|0〉" {
                     "reset".to_string()
+                // TODO: make this a constant too
+                } else if &op.gate == "GlobalPhase" {
+                    "gphase".to_string()
                 } else {
                     op.gate.to_lowercase()
                 };
